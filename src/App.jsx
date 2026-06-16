@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 
 // ── CONSTANTS ──
 const APP_NAME = "Далат Мани";
@@ -23,7 +23,15 @@ const CURRENCIES = [
 
 const DEFAULT_CATEGORIES = ["Аренда","Продукты","Кафе","Развлечения","Работа","Другое"];
 
-const DEMO_EXPENSES = [];
+const DEMO_EXPENSES = [
+  { id:1, family:"artem_natasha", addedBy:"artem",  amount:3400000, currency:"vnd", category:"Продукты",    desc:"Продукты в BigC",        date:"2026-05-01", settled:false },
+  { id:2, family:"nastya_roma",   addedBy:"roma",   amount:1800000, currency:"vnd", category:"Кафе",        desc:"Кофе и десерты",         date:"2026-05-07", settled:false },
+  { id:3, family:"artem_natasha", addedBy:"natasha",amount:500,     currency:"usd", category:"Аренда",      desc:"Аренда апартов май",     date:"2026-05-01", settled:false },
+  { id:4, family:"nastya_roma",   addedBy:"nastya", amount:2500000, currency:"vnd", category:"Развлечения", desc:"Парк развлечений",       date:"2026-05-15", settled:false },
+  { id:5, family:"artem_natasha", addedBy:"artem",  amount:900000,  currency:"vnd", category:"Продукты",    desc:"Рынок Далат",            date:"2026-06-02", settled:false },
+  { id:6, family:"nastya_roma",   addedBy:"roma",   amount:1200000, currency:"vnd", category:"Кафе",        desc:"Ужин на озере",          date:"2026-06-05", settled:false },
+  { id:7, family:"artem_natasha", addedBy:"natasha",amount:300,     currency:"usd", category:"Работа",      desc:"Коворкинг июнь",         date:"2026-06-01", settled:false },
+];
 
 const DEMO_SETTLEMENTS = [];
 
