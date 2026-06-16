@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, setDoc } from "firebase/firestore";
 
 // ── FIREBASE ──
 const firebaseConfig = {
@@ -495,7 +495,13 @@ export default function App() {
       data.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
       setSettlements(data);
     });
-    return () => { unsubExp(); unsubSet(); };
+    const unsubCat = onSnapshot(doc(db, "settings", "categories"), snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.list && data.list.length > 0) setCategories(data.list);
+      }
+    });
+    return () => { unsubExp(); unsubSet(); unsubCat(); };
   }, []);
 
   function handleLogin(user) {
@@ -585,9 +591,12 @@ export default function App() {
     });
   }
 
-  function addCategory() {
+  async function addCategory() {
     const t = newCatInput.trim();
-    if (t && !categories.includes(t)) setCategories([...categories, t]);
+    if (t && !categories.includes(t)) {
+      const newList = [...categories, t];
+      await setDoc(doc(db, "settings", "categories"), { list: newList });
+    }
     setNewCatInput(""); setShowNewCat(false);
   }
 
@@ -914,7 +923,7 @@ const S = {
 
   settlementRow: { display:"flex", alignItems:"center", gap:12, padding:"14px 0", borderBottom:"1px solid #2D2D4E" },
 
-  fab: { position:"fixed", bottom:28, right:20, width:64, height:64, borderRadius:"50%", border:"none", color:"#fff", fontSize:36, fontWeight:300, cursor:"pointer", boxShadow:"0 6px 28px rgba(0,0,0,0.5)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 },
+  fab: { position:"fixed", bottom:28, right:20, width:70, height:70, borderRadius:"50%", border:"none", color:"#fff", fontSize:38, fontWeight:400, cursor:"pointer", boxShadow:"0 6px 32px rgba(180,60,120,0.5)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, background:"linear-gradient(135deg, #C0386B, #8B1A4A)" },
 
   modalOverlay: { position:"fixed", inset:0, background:"#000000BB", display:"flex", alignItems:"flex-end", zIndex:100 },
   modal: { background:"#1E1E3A", borderRadius:"20px 20px 0 0", padding:"24px 20px 48px", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92vh", overflowY:"auto" },
