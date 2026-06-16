@@ -472,6 +472,7 @@ export default function App() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCatInput, setNewCatInput] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
+  const [selectedSettlement, setSelectedSettlement] = useState(null);
 
   // Load user from localStorage
   useEffect(() => {
@@ -552,26 +553,33 @@ export default function App() {
   async function handleSettle({ amount, currency, direction }) {
     const payer    = direction==="an_to_nr" ? "artem_natasha" : "nastya_roma";
     const receiver = direction==="an_to_nr" ? "nastya_roma"   : "artem_natasha";
-    await addDoc(collection(db, "settlements"), {
+
+    // Snapshot of current period totals
+    const periodAN = {};
+    const periodNR = {};
+    CURRENCIES.forEach(c => {
+      periodAN[c.id] = unsettled.filter(e => e.family==="artem_natasha" && e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+      periodNR[c.id] = unsettled.filter(e => e.family==="nastya_roma"   && e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+    });
+
+    // Create settlement record with snapshot
+    const settlementRef = await addDoc(collection(db, "settlements"), {
       fromId: payer, from: FAMILIES[payer].name,
       toId: receiver, to: FAMILIES[receiver].name,
       amount, currency,
       date: new Date().toISOString(),
       createdAt: serverTimestamp(),
+      snapshot: { an: periodAN, nr: periodNR },
+      expenseIds: unsettled.map(e => e.id),
     });
-    let toReduce = amount;
-    const toSettle = unsettled
-      .filter(e => e.family===receiver && e.currency===currency)
-      .sort((a,b) => a.date.localeCompare(b.date));
-    for (const e of toSettle) {
-      if (toReduce <= 0) break;
-      if (e.amount <= toReduce) {
-        toReduce -= e.amount;
-        await updateDoc(doc(db, "expenses", e.id), { settled: true, settledAt: new Date().toISOString().slice(0,10) });
-      } else {
-        await updateDoc(doc(db, "expenses", e.id), { amount: e.amount - toReduce });
-        toReduce = 0;
-      }
+
+    // Mark ALL current unsettled expenses as closed in this settlement period
+    for (const e of unsettled) {
+      await updateDoc(doc(db, "expenses", e.id), {
+        settled: true,
+        settledAt: new Date().toISOString().slice(0,10),
+        settlementId: settlementRef.id,
+      });
     }
   }
 
@@ -787,34 +795,73 @@ export default function App() {
         {/* ── ИСТОРИЯ ── */}
         {tab==="history" && (
           <div>
-            {settlements.length>0 && (
-              <>
-                <div style={S.sectionTitle}>Переводы</div>
-                {[...settlements].reverse().map(s => (
-                  <div key={s.id} style={S.settlementRow}>
+            {settlements.length===0 && <div style={S.empty}>История пустая</div>}
+            {[...settlements].sort((a,b) => (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).map(s => {
+              const isOpen = selectedSettlement === s.id;
+              const settledExp = expenses.filter(e => e.settlementId === s.id);
+              return (
+                <div key={s.id}>
+                  <div style={{ ...S.settlementRow, cursor:"pointer", borderRadius:10, padding:"14px 12px", background: isOpen?"#1E1E3A":"transparent" }}
+                    onClick={() => setSelectedSettlement(isOpen ? null : s.id)}>
                     <div style={{ fontSize:20 }}>💸</div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:500 }}>
+                      <div style={{ fontSize:14, fontWeight:600 }}>
                         <span style={{ color: FAMILIES[s.fromId]?.color }}>{s.from}</span>
                         {" → "}
                         <span style={{ color: FAMILIES[s.toId]?.color }}>{s.to}</span>
                       </div>
                       <div style={{ fontSize:12, color:"#9090A8", marginTop:2 }}>{formatDateTime(s.date)}</div>
                     </div>
-                    <div style={{ fontSize:15, fontWeight:700, color:"#4ECDC4" }}>{formatMoney(s.amount, s.currency)}</div>
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#4ECDC4" }}>{formatMoney(s.amount, s.currency)}</div>
+                      <div style={{ fontSize:11, color:"#9090A8" }}>{isOpen ? "▲ скрыть" : "▼ детали"}</div>
+                    </div>
                   </div>
-                ))}
-              </>
-            )}
-            {settled.length>0 && (
-              <>
-                <div style={{ ...S.sectionTitle, marginTop:20 }}>Закрытые расходы</div>
-                {[...settled].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
-              </>
-            )}
-            {settlements.length===0 && settled.length===0 && (
-              <div style={S.empty}>История пустая</div>
-            )}
+
+                  {isOpen && (
+                    <div style={{ background:"#13132B", borderRadius:10, margin:"4px 0 12px", padding:"12px 14px" }}>
+                      {/* Snapshot totals */}
+                      {s.snapshot && (
+                        <div style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Итого за период</div>
+                          <div style={{ display:"flex", gap:10 }}>
+                            {Object.values(FAMILIES).map(f => {
+                              const snap = f.id==="artem_natasha" ? s.snapshot.an : s.snapshot.nr;
+                              return (
+                                <div key={f.id} style={{ flex:1, background:"#1E1E3A", borderRadius:8, padding:"10px 12px", borderTop:`2px solid ${f.color}` }}>
+                                  <div style={{ fontSize:11, color:f.color, fontWeight:600, marginBottom:6 }}>{f.name}</div>
+                                  {CURRENCIES.filter(c => snap?.[c.id] > 0).map(c => (
+                                    <div key={c.id} style={{ fontSize:13, fontWeight:700 }}>{formatMoney(snap[c.id], c.id)}</div>
+                                  ))}
+                                  {!CURRENCIES.some(c => snap?.[c.id] > 0) && <div style={{ fontSize:12, color:"#9090A8" }}>—</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {/* Expenses list */}
+                      <div style={{ fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Расходы в этом периоде</div>
+                      {settledExp.length===0 && <div style={{ fontSize:13, color:"#9090A8" }}>нет данных</div>}
+                      {settledExp.map(e => {
+                        const f = FAMILIES[e.family];
+                        const u = USERS.find(u=>u.id===e.addedBy);
+                        return (
+                          <div key={e.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:"1px solid #2D2D4E" }}>
+                            <div style={{ width:6, height:6, borderRadius:"50%", background:f.color, flexShrink:0 }} />
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13 }}>{e.desc}</div>
+                              <div style={{ fontSize:11, color:"#9090A8" }}>{f.name} · {u?.name||"—"} · {formatDate(e.date)}</div>
+                            </div>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{formatMoney(e.amount, e.currency)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
