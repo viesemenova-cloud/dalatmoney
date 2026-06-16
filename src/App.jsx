@@ -583,6 +583,21 @@ export default function App() {
     }
   }
 
+  async function handleDeleteSettlement(settlement) {
+    if (!window.confirm(`Удалить расчёт на ${formatMoney(settlement.amount, settlement.currency)}? Все расходы вернутся в активные.`)) return;
+    // Reopen all expenses tied to this settlement
+    const tied = expenses.filter(e => e.settlementId === settlement.id);
+    for (const e of tied) {
+      await updateDoc(doc(db, "expenses", e.id), {
+        settled: false,
+        settlementId: null,
+        settledAt: null,
+      });
+    }
+    // Delete the settlement record
+    await deleteDoc(doc(db, "settlements", settlement.id));
+  }
+
   async function handleSaveEdit(updated) {
     const { id, ...data } = updated;
     await updateDoc(doc(db, "expenses", id), {
@@ -814,7 +829,13 @@ export default function App() {
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
                       <div style={{ fontSize:15, fontWeight:700, color:"#4ECDC4" }}>{formatMoney(s.amount, s.currency)}</div>
-                      <div style={{ fontSize:11, color:"#9090A8" }}>{isOpen ? "▲ скрыть" : "▼ детали"}</div>
+                      <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                        <div style={{ fontSize:11, color:"#9090A8" }}>{isOpen ? "▲ скрыть" : "▼ детали"}</div>
+                        <button style={{ fontSize:11, background:"none", border:"1px solid #FF444466", borderRadius:6, color:"#FF4444", padding:"3px 8px", cursor:"pointer", fontFamily:"inherit" }}
+                          onClick={e => { e.stopPropagation(); handleDeleteSettlement(s); }}>
+                          удалить
+                        </button>
+                      </div>
                     </div>
                   </div>
 
