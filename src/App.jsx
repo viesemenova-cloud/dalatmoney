@@ -486,7 +486,11 @@ export default function App() {
   useEffect(() => {
     const unsubExp = onSnapshot(collection(db, "expenses"), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      data.sort((a, b) => {
+        const ta = a.createdAt?.seconds || 0;
+        const tb = b.createdAt?.seconds || 0;
+        return tb - ta;
+      });
       setExpenses(data);
       setLoading(false);
     });
@@ -775,7 +779,7 @@ export default function App() {
             {/* Список расходов */}
             <div style={S.sectionTitle}>Все активные расходы</div>
             {unsettled.length===0 && <div style={S.empty}>Нажми + чтобы добавить первый расход</div>}
-            {[...expenses.filter(e => !e.settled)].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
+            {[...expenses.filter(e => !e.settled)].map(e => <ExpenseRow key={e.id} expense={e} />)}
           </div>
         )}
 
