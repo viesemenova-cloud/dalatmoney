@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
 
 // ── FIREBASE ──
 const firebaseConfig = {
@@ -499,7 +499,7 @@ export default function App() {
   if (loading) return <div style={{ minHeight:"100vh", background:"#13132B", display:"flex", alignItems:"center", justifyContent:"center", color:"#9090A8", fontSize:16 }}>Загрузка...</div>;
 
   const myFamily = FAMILIES[currentUser.family];
-  const unsettled = expenses.filter(e => !e.settled);
+  const unsettled = expenses.filter(e => !e.settled && !e.deleted);
   const settled   = expenses.filter(e => e.settled);
 
   // Compute debts per currency
@@ -564,6 +564,14 @@ export default function App() {
     });
   }
 
+  async function handleDelete(expense) {
+    await updateDoc(doc(db, "expenses", expense.id), {
+      deleted: true,
+      deletedBy: currentUser.id,
+      deletedAt: new Date().toISOString(),
+    });
+  }
+
   function addCategory() {
     const t = newCatInput.trim();
     if (t && !categories.includes(t)) setCategories([...categories, t]);
@@ -577,19 +585,22 @@ export default function App() {
     const f = FAMILIES[expense.family];
     const addedByUser = USERS.find(u => u.id===expense.addedBy);
     const editedByUser = expense.editedBy ? USERS.find(u => u.id===expense.editedBy) : null;
+    const deletedByUser = expense.deletedBy ? USERS.find(u => u.id===expense.deletedBy) : null;
     const isMe = expense.addedBy === currentUser.id;
+    const isDeleted = !!expense.deleted;
     return (
-      <div style={S.expenseRow}>
-        <div style={{ ...S.expenseDot, background: f.color }} />
+      <div style={{ ...S.expenseRow, opacity: isDeleted ? 0.6 : 1, background: isDeleted ? "#1A0A0A" : "transparent", borderRadius: isDeleted ? 8 : 0, padding: isDeleted ? "10px 8px" : "14px 0" }}>
+        <div style={{ ...S.expenseDot, background: isDeleted ? "#FF4444" : f.color }} />
         <div style={S.expenseInfo}>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <div style={S.expenseDesc}>{expense.desc}</div>
-            {expense.editedBy && (
+            <div style={{ ...S.expenseDesc, textDecoration: isDeleted ? "line-through" : "none", color: isDeleted ? "#FF6666" : "#E8E0D5" }}>{expense.desc}</div>
+            {expense.editedBy && !isDeleted && (
               <div style={S.editedBadge} title={`Изм. ${editedByUser?.name||"?"} · ${formatDateTime(expense.editedAt)}`}>✎</div>
             )}
+            {isDeleted && <div style={{ ...S.editedBadge, color:"#FF4444", borderColor:"#FF444444" }}>удалено</div>}
           </div>
           <div style={S.expenseMeta}>
-            <span style={{ color: f.color }}>{f.name}</span>
+            <span style={{ color: isDeleted ? "#FF6666" : f.color }}>{f.name}</span>
             <span style={S.dot}>·</span>
             <span style={{ color:"#7070A0" }}>{expense.category}</span>
             <span style={S.dot}>·</span>
@@ -597,15 +608,21 @@ export default function App() {
             <span style={S.dot}>·</span>
             <span style={{ color: isMe?"#E8E0D5":"#9090A8" }}>{isMe?"вы":addedByUser?.name||"—"}</span>
           </div>
-          {expense.editedBy && (
+          {expense.editedBy && !isDeleted && (
             <div style={{ fontSize:10, color:"#5D5D7A", marginTop:2 }}>
               изм. {editedByUser?.name||"?"} · {formatDateTime(expense.editedAt)}
             </div>
           )}
+          {isDeleted && (
+            <div style={{ fontSize:10, color:"#FF4444", marginTop:2 }}>
+              удалил {deletedByUser?.name||"?"} · {formatDateTime(expense.deletedAt)}
+            </div>
+          )}
         </div>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
-          <div style={S.expenseAmount}>{formatMoney(expense.amount, expense.currency)}</div>
-          <button style={S.editBtn} onClick={() => setEditingExpense(expense)}>✎</button>
+          <div style={{ ...S.expenseAmount, textDecoration: isDeleted ? "line-through" : "none", color: isDeleted ? "#FF6666" : "#E8E0D5" }}>{formatMoney(expense.amount, expense.currency)}</div>
+          {!isDeleted && <button style={S.editBtn} onClick={() => setEditingExpense(expense)}>✎</button>}
+          {!isDeleted && <button style={{ ...S.editBtn, color:"#FF4444" }} onClick={() => handleDelete(expense)}>🗑</button>}
         </div>
       </div>
     );
@@ -736,7 +753,7 @@ export default function App() {
             {/* Список расходов */}
             <div style={S.sectionTitle}>Все активные расходы</div>
             {unsettled.length===0 && <div style={S.empty}>Нажми + чтобы добавить первый расход</div>}
-            {[...unsettled].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
+            {[...expenses.filter(e => !e.settled)].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
           </div>
         )}
 
