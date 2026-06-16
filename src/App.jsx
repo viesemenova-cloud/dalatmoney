@@ -123,8 +123,12 @@ function AddExpenseModal({ currentUser, categories, onAdd, onClose }) {
           ))}
         </div>
 
-        <input style={S.input} type="number" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
-          value={amount} onChange={e => setAmount(e.target.value)} />
+        <input style={S.input} type="text" inputMode="numeric" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
+          value={amount ? Number(amount.replace(/['\s]/g,'')).toLocaleString("ru-RU") : ""}
+          onChange={e => {
+            const raw = e.target.value.replace(/['\s  ]/g, "").replace(/[^0-9]/g, "");
+            setAmount(raw);
+          }} />
 
         {/* Category selector */}
         <div style={S.catGrid}>
@@ -233,8 +237,12 @@ function SettleModal({ debts, onSettle, onClose }) {
           </div>
         )}
 
-        <input style={S.input} type="number" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
-          value={amount} onChange={e => setAmount(e.target.value)} />
+        <input style={S.input} type="text" inputMode="numeric" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
+          value={amount ? Number(amount.replace(/['\s]/g,'')).toLocaleString("ru-RU") : ""}
+          onChange={e => {
+            const raw = e.target.value.replace(/['\s  ]/g, "").replace(/[^0-9]/g, "");
+            setAmount(raw);
+          }} />
 
         <div style={S.modalBtns}>
           <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
@@ -276,7 +284,12 @@ function EditModal({ expense, categories, currentUser, onSave, onClose }) {
             </button>
           ))}
         </div>
-        <input style={S.input} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+        <input style={S.input} type="text" inputMode="numeric"
+          value={amount ? Number(String(amount).replace(/['\s ]/g,'')).toLocaleString("ru-RU") : ""}
+          onChange={e => {
+            const raw = e.target.value.replace(/['\s  ]/g, "").replace(/[^0-9]/g, "");
+            setAmount(raw);
+          }} />
         <div style={S.catGrid}>
           {categories.map(cat => (
             <button key={cat} style={{ ...S.catBtn, ...(category===cat ? { background: f.color+"33", borderColor: f.color, color: f.color } : {}) }}
@@ -851,9 +864,9 @@ export default function App() {
 
 // ── STYLES ──
 const S = {
-  root: { minHeight:"100vh", background:"#13132B", color:"#E8E0D5", fontFamily:"'Inter',-apple-system,sans-serif", maxWidth:480, margin:"0 auto", paddingBottom:100 },
+  root: { minHeight:"100vh", background:"#13132B", color:"#E8E0D5", fontFamily:"'Inter',-apple-system,sans-serif", maxWidth:480, margin:"0 auto", paddingBottom:120, WebkitTapHighlightColor:"transparent" },
 
-  loginRoot: { minHeight:"100vh", background:"#13132B", display:"flex", alignItems:"center", justifyContent:"center", padding:24 },
+  loginRoot: { minHeight:"100vh", background:"#13132B", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 20px", paddingBottom:"max(24px, env(safe-area-inset-bottom))" },
   loginInner: { width:"100%", maxWidth:380, textAlign:"center" },
   loginLogo: { fontSize:48, marginBottom:8 },
   loginTitle: { fontSize:28, fontWeight:800, letterSpacing:-1, marginBottom:4, color:"#E8E0D5" },
@@ -873,7 +886,7 @@ const S = {
   myDebtBanner: { margin:"12px 16px 0", borderRadius:10, border:"1px solid", padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:13 },
 
   tabs: { display:"flex", padding:"0 16px", borderBottom:"1px solid #2D2D4E", overflowX:"auto" },
-  tab: { background:"none", border:"none", color:"#9090A8", padding:"14px 12px", fontSize:13, cursor:"pointer", borderBottom:"2px solid transparent", marginBottom:-1, fontFamily:"inherit", whiteSpace:"nowrap" },
+  tab: { background:"none", border:"none", color:"#9090A8", padding:"16px 14px", fontSize:14, cursor:"pointer", borderBottom:"2px solid transparent", marginBottom:-1, fontFamily:"inherit", whiteSpace:"nowrap" },
   tabActive: { color:"#E8E0D5", borderBottom:"2px solid #E8E0D5" },
 
   content: { padding:"20px 24px" },
@@ -881,7 +894,7 @@ const S = {
   debtCard: { background:"#1E1E3A", borderRadius:16, padding:"20px", marginBottom:16 },
   debtLabel: { fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:14 },
   debtLine: { display:"flex", alignItems:"center", marginBottom:10, fontSize:14 },
-  settleBtn: { width:"100%", padding:"12px", background:"#2D2D4E", border:"none", borderRadius:10, color:"#E8E0D5", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  settleBtn: { width:"100%", padding:"14px", background:"#2D2D4E", border:"none", borderRadius:10, color:"#E8E0D5", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit", minHeight:48 },
   statsRow: { display:"flex", gap:12, marginBottom:16 },
   statCard: { flex:1, background:"#1E1E3A", borderRadius:12, padding:"14px 12px" },
   statName: { fontSize:11, fontWeight:600, marginBottom:8 },
@@ -896,15 +909,15 @@ const S = {
   expenseMeta: { fontSize:11, color:"#9090A8", display:"flex", gap:3, alignItems:"center", flexWrap:"wrap" },
   dot: { color:"#4D4D6A" },
   expenseAmount: { fontSize:14, fontWeight:700, textAlign:"right" },
-  editBtn: { fontSize:11, background:"#2D2D4E", border:"none", borderRadius:6, color:"#9090A8", padding:"3px 7px", cursor:"pointer", fontFamily:"inherit" },
+  editBtn: { fontSize:12, background:"#2D2D4E", border:"none", borderRadius:6, color:"#9090A8", padding:"6px 10px", cursor:"pointer", fontFamily:"inherit", minHeight:32, minWidth:32 },
   editedBadge: { fontSize:10, background:"#2D2D4E", borderRadius:4, padding:"1px 5px", color:"#9090A8", cursor:"help" },
 
   settlementRow: { display:"flex", alignItems:"center", gap:12, padding:"14px 0", borderBottom:"1px solid #2D2D4E" },
 
-  fab: { position:"fixed", bottom:28, right:"calc(50% - 220px)", width:56, height:56, borderRadius:"50%", border:"none", color:"#fff", fontSize:28, fontWeight:300, cursor:"pointer", boxShadow:"0 4px 20px #0008", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center" },
+  fab: { position:"fixed", bottom:28, right:20, width:64, height:64, borderRadius:"50%", border:"none", color:"#fff", fontSize:36, fontWeight:300, cursor:"pointer", boxShadow:"0 6px 28px rgba(0,0,0,0.5)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 },
 
   modalOverlay: { position:"fixed", inset:0, background:"#000000BB", display:"flex", alignItems:"flex-end", zIndex:100 },
-  modal: { background:"#1E1E3A", borderRadius:"20px 20px 0 0", padding:"24px 24px 40px", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"90vh", overflowY:"auto" },
+  modal: { background:"#1E1E3A", borderRadius:"20px 20px 0 0", padding:"24px 20px 48px", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"92vh", overflowY:"auto" },
   modalHeader: { display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:16 },
   modalTitle: { fontSize:18, fontWeight:700, marginBottom:6 },
   modalSub: { fontSize:13, color:"#9090A8", marginBottom:16 },
@@ -914,11 +927,11 @@ const S = {
   seg: { flex:1, padding:"9px 8px", borderRadius:8, border:"1.5px solid #2D2D4E", background:"none", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
 
   catGrid: { display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 },
-  catBtn: { padding:"6px 12px", borderRadius:20, border:"1.5px solid #2D2D4E", background:"none", color:"#9090A8", fontSize:12, cursor:"pointer", fontFamily:"inherit" },
+  catBtn: { padding:"8px 14px", borderRadius:20, border:"1.5px solid #2D2D4E", background:"none", color:"#9090A8", fontSize:13, cursor:"pointer", fontFamily:"inherit", minHeight:36 },
 
   input: { width:"100%", background:"#13132B", border:"1px solid #2D2D4E", borderRadius:10, padding:"12px 14px", color:"#E8E0D5", fontSize:14, marginBottom:10, fontFamily:"inherit", boxSizing:"border-box", outline:"none" },
-  addBtn: { flex:1, padding:"13px", border:"none", borderRadius:10, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
-  cancelBtn: { flex:1, padding:"13px", background:"#2D2D4E", border:"none", borderRadius:10, color:"#E8E0D5", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  addBtn: { flex:1, padding:"15px", border:"none", borderRadius:12, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit", minHeight:50 },
+  cancelBtn: { flex:1, padding:"15px", background:"#2D2D4E", border:"none", borderRadius:12, color:"#E8E0D5", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit", minHeight:50 },
 
   debtSummaryBox: { background:"#13132B", borderRadius:10, padding:"12px 14px", marginBottom:14, fontSize:13, textAlign:"center" },
   dirToggle: { display:"flex", flexDirection:"column", gap:8, marginBottom:14 },
