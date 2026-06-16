@@ -1,6 +1,19 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 
-// ── CONSTANTS ──
+// ── FIREBASE ──
+const firebaseConfig = {
+  apiKey: "AIzaSyDMcHuSHCXiZ9Dz9m8g6B97qojhQGXRGt0",
+  authDomain: "dalatmoney-116b5.firebaseapp.com",
+  projectId: "dalatmoney-116b5",
+  storageBucket: "dalatmoney-116b5.firebasestorage.app",
+  messagingSenderId: "1036706418283",
+  appId: "1:1036706418283:web:e41bdc0763975a4e7a2b2e",
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
 const APP_NAME = "Далат Мани";
 
 const FAMILIES = {
@@ -23,16 +36,7 @@ const CURRENCIES = [
 
 const DEFAULT_CATEGORIES = ["Аренда","Продукты","Кафе","Развлечения","Работа","Другое"];
 
-const DEMO_EXPENSES = [
-  { id:1, family:"artem_natasha", addedBy:"artem",  amount:3400000, currency:"vnd", category:"Продукты",    desc:"Продукты в BigC",        date:"2026-05-01", settled:false },
-  { id:2, family:"nastya_roma",   addedBy:"roma",   amount:1800000, currency:"vnd", category:"Кафе",        desc:"Кофе и десерты",         date:"2026-05-07", settled:false },
-  { id:3, family:"artem_natasha", addedBy:"natasha",amount:500,     currency:"usd", category:"Аренда",      desc:"Аренда апартов май",     date:"2026-05-01", settled:false },
-  { id:4, family:"nastya_roma",   addedBy:"nastya", amount:2500000, currency:"vnd", category:"Развлечения", desc:"Парк развлечений",       date:"2026-05-15", settled:false },
-  { id:5, family:"artem_natasha", addedBy:"artem",  amount:900000,  currency:"vnd", category:"Продукты",    desc:"Рынок Далат",            date:"2026-06-02", settled:false },
-  { id:6, family:"nastya_roma",   addedBy:"roma",   amount:1200000, currency:"vnd", category:"Кафе",        desc:"Ужин на озере",          date:"2026-06-05", settled:false },
-  { id:7, family:"artem_natasha", addedBy:"natasha",amount:300,     currency:"usd", category:"Работа",      desc:"Коворкинг июнь",         date:"2026-06-01", settled:false },
-];
-
+const DEMO_EXPENSES = [];
 const DEMO_SETTLEMENTS = [];
 
 function formatMoney(n, currencyId) {
@@ -445,8 +449,9 @@ function StatsTab({ expenses }) {
 // ── MAIN APP ──
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [expenses, setExpenses] = useState(DEMO_EXPENSES);
-  const [settlements, setSettlements] = useState(DEMO_SETTLEMENTS);
+  const [expenses, setExpenses] = useState([]);
+  const [settlements, setSettlements] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("main");
   const [showAdd, setShowAdd] = useState(false);
   const [showSettle, setShowSettle] = useState(false);
@@ -455,7 +460,43 @@ export default function App() {
   const [newCatInput, setNewCatInput] = useState("");
   const [showNewCat, setShowNewCat] = useState(false);
 
-  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
+  // Load user from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("splitfam_user");
+    if (saved) {
+      const u = USERS.find(u => u.id === saved);
+      if (u) setCurrentUser(u);
+    }
+  }, []);
+
+  // Firebase realtime listeners
+  useEffect(() => {
+    const unsubExp = onSnapshot(collection(db, "expenses"), snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      setExpenses(data);
+      setLoading(false);
+    });
+    const unsubSet = onSnapshot(collection(db, "settlements"), snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      setSettlements(data);
+    });
+    return () => { unsubExp(); unsubSet(); };
+  }, []);
+
+  function handleLogin(user) {
+    setCurrentUser(user);
+    localStorage.setItem("splitfam_user", user.id);
+  }
+
+  function handleLogout() {
+    setCurrentUser(null);
+    localStorage.removeItem("splitfam_user");
+  }
+
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
+  if (loading) return <div style={{ minHeight:"100vh", background:"#13132B", display:"flex", alignItems:"center", justifyContent:"center", color:"#9090A8", fontSize:16 }}>Загрузка...</div>;
 
   const myFamily = FAMILIES[currentUser.family];
   const unsettled = expenses.filter(e => !e.settled);
@@ -474,47 +515,53 @@ export default function App() {
   const myDebts = Object.entries(debts)
     .filter(([c,v]) => (myFamily.id==="artem_natasha" ? v>0 : v<0) && Math.abs(v)>0);
 
-  function handleAddExpense(data) {
-    setExpenses([...expenses, {
-      id: Date.now(),
+  async function handleAddExpense(data) {
+    await addDoc(collection(db, "expenses"), {
       family: currentUser.family,
       addedBy: currentUser.id,
       ...data,
       date: new Date().toISOString().slice(0,10),
       settled: false,
-    }]);
+      createdAt: serverTimestamp(),
+    });
   }
 
-  function handleSettle({ amount, currency, direction }) {
+  async function handleSettle({ amount, currency, direction }) {
     const payer    = direction==="an_to_nr" ? "artem_natasha" : "nastya_roma";
     const receiver = direction==="an_to_nr" ? "nastya_roma"   : "artem_natasha";
-    setSettlements([...settlements, {
-      id: Date.now(),
+    await addDoc(collection(db, "settlements"), {
       fromId: payer, from: FAMILIES[payer].name,
       toId: receiver, to: FAMILIES[receiver].name,
       amount, currency,
       date: new Date().toISOString(),
-    }]);
-    // Reduce receiver's oldest expenses in that currency
+      createdAt: serverTimestamp(),
+    });
     let toReduce = amount;
-    const newExp = expenses.map(e => ({...e}));
-    for (let i=0; i<newExp.length && toReduce>0; i++) {
-      if (!newExp[i].settled && newExp[i].family===receiver && newExp[i].currency===currency) {
-        if (newExp[i].amount <= toReduce) {
-          toReduce -= newExp[i].amount;
-          newExp[i].settled = true;
-          newExp[i].settledAt = new Date().toISOString().slice(0,10);
-        } else {
-          newExp[i].amount -= toReduce;
-          toReduce = 0;
-        }
+    const toSettle = unsettled
+      .filter(e => e.family===receiver && e.currency===currency)
+      .sort((a,b) => a.date.localeCompare(b.date));
+    for (const e of toSettle) {
+      if (toReduce <= 0) break;
+      if (e.amount <= toReduce) {
+        toReduce -= e.amount;
+        await updateDoc(doc(db, "expenses", e.id), { settled: true, settledAt: new Date().toISOString().slice(0,10) });
+      } else {
+        await updateDoc(doc(db, "expenses", e.id), { amount: e.amount - toReduce });
+        toReduce = 0;
       }
     }
-    setExpenses(newExp);
   }
 
-  function handleSaveEdit(updated) {
-    setExpenses(expenses.map(e => e.id===updated.id ? updated : e));
+  async function handleSaveEdit(updated) {
+    const { id, ...data } = updated;
+    await updateDoc(doc(db, "expenses", id), {
+      amount: data.amount,
+      currency: data.currency,
+      category: data.category,
+      desc: data.desc,
+      editedBy: currentUser.id,
+      editedAt: new Date().toISOString(),
+    });
   }
 
   function addCategory() {
@@ -573,7 +620,7 @@ export default function App() {
           <div style={S.headerSub}>общий кошелёк двух семей</div>
         </div>
         <button style={{ ...S.avatarBtn, borderColor: myFamily.color, color: myFamily.color }}
-          onClick={() => setCurrentUser(null)}>
+          onClick={() => handleLogout()}>
           {currentUser.name} ↩
         </button>
       </div>
