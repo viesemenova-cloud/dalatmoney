@@ -1,0 +1,880 @@
+import { useState, useMemo } from "react";
+
+// ── CONSTANTS ──
+const APP_NAME = "Далат Мани";
+
+const FAMILIES = {
+  artem_natasha: { id: "artem_natasha", name: "Артём & Наташа", color: "#5B9BF8", bg: "#5B9BF822" },
+  nastya_roma:   { id: "nastya_roma",   name: "Настя & Рома",   color: "#4ECDC4", bg: "#4ECDC422" },
+};
+
+const USERS = [
+  { id: "artem",  name: "Артём",  family: "artem_natasha", emoji: "👨" },
+  { id: "natasha",name: "Наташа", family: "artem_natasha", emoji: "👩" },
+  { id: "nastya", name: "Настя",  family: "nastya_roma",   emoji: "👩" },
+  { id: "roma",   name: "Рома",   family: "nastya_roma",   emoji: "👨" },
+];
+
+const CURRENCIES = [
+  { id: "vnd", symbol: "₫",    name: "Донги" },
+  { id: "rub", symbol: "₽",    name: "Рубли" },
+  { id: "usd", symbol: "USDT", name: "USDT"  },
+];
+
+const DEFAULT_CATEGORIES = ["Аренда","Продукты","Кафе","Развлечения","Работа","Другое"];
+
+const DEMO_EXPENSES = [
+  { id:1, family:"artem_natasha", addedBy:"artem",  amount:3400000, currency:"vnd", category:"Продукты",    desc:"Продукты в BigC",        date:"2026-05-01", settled:false },
+  { id:2, family:"nastya_roma",   addedBy:"roma",   amount:1800000, currency:"vnd", category:"Кафе",        desc:"Кофе и десерты",         date:"2026-05-07", settled:false },
+  { id:3, family:"artem_natasha", addedBy:"natasha",amount:500,     currency:"usd", category:"Аренда",      desc:"Аренда апартов май",     date:"2026-05-01", settled:false },
+  { id:4, family:"nastya_roma",   addedBy:"nastya", amount:2500000, currency:"vnd", category:"Развлечения", desc:"Парк развлечений",       date:"2026-05-15", settled:false },
+  { id:5, family:"artem_natasha", addedBy:"artem",  amount:900000,  currency:"vnd", category:"Продукты",    desc:"Рынок Далат",            date:"2026-06-02", settled:false },
+  { id:6, family:"nastya_roma",   addedBy:"roma",   amount:1200000, currency:"vnd", category:"Кафе",        desc:"Ужин на озере",          date:"2026-06-05", settled:false },
+  { id:7, family:"artem_natasha", addedBy:"natasha",amount:300,     currency:"usd", category:"Работа",      desc:"Коворкинг июнь",         date:"2026-06-01", settled:false },
+];
+
+const DEMO_SETTLEMENTS = [];
+
+function formatMoney(n, currencyId) {
+  const c = CURRENCIES.find(c => c.id === currencyId);
+  if (!c) return String(n);
+  if (currencyId === "vnd") return n.toLocaleString("ru-RU") + " ₫";
+  if (currencyId === "rub") return n.toLocaleString("ru-RU") + " ₽";
+  return n.toLocaleString("ru-RU") + " USDT";
+}
+
+function formatDate(d) {
+  return new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+
+function formatDateTime(d) {
+  return new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function currentMonth() { return new Date().toISOString().slice(0,7); }
+function prevMonth() {
+  const d = new Date(); d.setMonth(d.getMonth()-1);
+  return d.toISOString().slice(0,7);
+}
+
+// ── LOGIN ──
+function LoginScreen({ onLogin }) {
+  const [hovered, setHovered] = useState(null);
+  return (
+    <div style={S.loginRoot}>
+      <div style={S.loginInner}>
+        <div style={S.loginLogo}>🌿</div>
+        <div style={S.loginTitle}>{APP_NAME}</div>
+        <div style={S.loginSub}>Кто ты?</div>
+        <div style={S.loginGrid}>
+          {USERS.map(u => {
+            const f = FAMILIES[u.family];
+            return (
+              <button key={u.id}
+                style={{ ...S.userCard, borderColor: hovered===u.id ? f.color:"#2D2D4E", background: hovered===u.id ? f.bg:"#1E1E3A" }}
+                onMouseEnter={() => setHovered(u.id)} onMouseLeave={() => setHovered(null)}
+                onClick={() => onLogin(u)}>
+                <div style={S.userEmoji}>{u.emoji}</div>
+                <div style={S.userName}>{u.name}</div>
+                <div style={{ ...S.userFamily, color: f.color }}>{f.name}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={S.loginHint}>Телефон запомнит тебя в следующий раз</div>
+      </div>
+    </div>
+  );
+}
+
+// ── ADD EXPENSE MODAL ──
+function AddExpenseModal({ currentUser, categories, onAdd, onClose }) {
+  const myFamily = FAMILIES[currentUser.family];
+  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("vnd");
+  const [category, setCategory] = useState(categories[0]);
+  const [desc, setDesc] = useState("");
+
+  function handleAdd() {
+    if (!amount || !desc) return;
+    onAdd({ amount: parseFloat(amount), currency, category, desc });
+    onClose();
+  }
+
+  return (
+    <div style={S.modalOverlay} onClick={onClose}>
+      <div style={S.modal} onClick={e => e.stopPropagation()}>
+        <div style={S.modalHeader}>
+          <div style={S.modalTitle}>Новый расход</div>
+          <div style={{ fontSize:12, color: myFamily.color, fontWeight:600 }}>от {myFamily.name}</div>
+        </div>
+
+        {/* Currency selector */}
+        <div style={S.segRow}>
+          {CURRENCIES.map(c => (
+            <button key={c.id} style={{ ...S.seg, ...(currency===c.id ? { background: myFamily.color, color:"#fff", borderColor: myFamily.color } : { color: myFamily.color, borderColor: myFamily.color+"66" }) }}
+              onClick={() => setCurrency(c.id)}>
+              {c.symbol}
+            </button>
+          ))}
+        </div>
+
+        <input style={S.input} type="number" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
+          value={amount} onChange={e => setAmount(e.target.value)} />
+
+        {/* Category selector */}
+        <div style={S.catGrid}>
+          {categories.map(cat => (
+            <button key={cat} style={{ ...S.catBtn, ...(category===cat ? { background: myFamily.color+"33", borderColor: myFamily.color, color: myFamily.color } : {}) }}
+              onClick={() => setCategory(cat)}>
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        <input style={S.input} type="text" placeholder="Описание"
+          value={desc} onChange={e => setDesc(e.target.value)}
+          onKeyDown={e => e.key==="Enter" && handleAdd()} />
+
+        <div style={S.modalBtns}>
+          <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
+          <button style={{ ...S.addBtn, background: myFamily.color, opacity: !amount||!desc ? 0.5:1 }} onClick={handleAdd}>
+            + Добавить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SETTLE MODAL ──
+function SettleModal({ debts, onSettle, onClose }) {
+  const [currency, setCurrency] = useState(Object.keys(debts).find(c => Math.abs(debts[c])>0) || "vnd");
+  const [amount, setAmount] = useState("");
+  const [dir, setDir] = useState(null);
+
+  const debt = debts[currency] || 0;
+  // debt > 0 → artem_natasha owes nastya_roma; < 0 → nastya_roma owes artem_natasha
+  const autoDir = debt > 0 ? "an_to_nr" : "nr_to_an";
+
+  const effectiveDir = dir || autoDir;
+
+  function handle() {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) return;
+    onSettle({ amount: amt, currency, direction: effectiveDir });
+    onClose();
+  }
+
+  const currenciesWithDebt = CURRENCIES.filter(c => Math.abs(debts[c.id]||0) > 0);
+
+  return (
+    <div style={S.modalOverlay} onClick={onClose}>
+      <div style={S.modal} onClick={e => e.stopPropagation()}>
+        <div style={S.modalTitle}>Рассчитаться</div>
+        <div style={S.modalSub}>Выбери валюту и сумму возврата</div>
+
+        {/* Currency */}
+        <div style={S.segRow}>
+          {CURRENCIES.map(c => {
+            const d = debts[c.id] || 0;
+            const hasDebt = Math.abs(d) > 0;
+            return (
+              <button key={c.id} style={{ ...S.seg, ...(currency===c.id ? { background:"#4ECDC4", color:"#fff", borderColor:"#4ECDC4" } : {}), opacity: hasDebt ? 1 : 0.4 }}
+                onClick={() => { setCurrency(c.id); setAmount(""); setDir(null); }}>
+                {c.symbol}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Auto-computed direction */}
+        {Math.abs(debt) > 0 && (
+          <div style={S.debtSummaryBox}>
+            <span style={{ color: debt>0 ? FAMILIES.artem_natasha.color : FAMILIES.nastya_roma.color }}>
+              {debt>0 ? "Артём & Наташа" : "Настя & Рома"}
+            </span>
+            {" должны → "}
+            <span style={{ color: debt>0 ? FAMILIES.nastya_roma.color : FAMILIES.artem_natasha.color }}>
+              {debt>0 ? "Настя & Рома" : "Артём & Наташа"}
+            </span>
+            <div style={{ fontWeight:700, marginTop:4 }}>{formatMoney(Math.abs(debt), currency)}</div>
+          </div>
+        )}
+
+        {/* Override direction */}
+        <div style={{ fontSize:11, color:"#9090A8", marginBottom:6 }}>Кто переводит (изменить):</div>
+        <div style={S.dirToggle}>
+          {[
+            { val:"an_to_nr", label:"Артём & Наташа → Настя & Рома", fid:"artem_natasha" },
+            { val:"nr_to_an", label:"Настя & Рома → Артём & Наташа", fid:"nastya_roma" },
+          ].map(opt => {
+            const f = FAMILIES[opt.fid];
+            const active = effectiveDir === opt.val;
+            return (
+              <button key={opt.val} style={{ ...S.dirBtn, ...(active ? { background: f.bg, borderColor: f.color, color: f.color } : {}) }}
+                onClick={() => setDir(opt.val)}>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {Math.abs(debt) > 0 && (
+          <div style={S.suggestRow}>
+            <span style={S.suggestLabel}>Полная сумма:</span>
+            <button style={S.suggestBtn} onClick={() => setAmount(String(Math.abs(debt)))}>
+              {formatMoney(Math.abs(debt), currency)}
+            </button>
+          </div>
+        )}
+
+        <input style={S.input} type="number" placeholder={`Сумма, ${CURRENCIES.find(c=>c.id===currency)?.symbol}`}
+          value={amount} onChange={e => setAmount(e.target.value)} />
+
+        <div style={S.modalBtns}>
+          <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
+          <button style={{ ...S.addBtn, background:"#4ECDC4", opacity:!amount?0.5:1 }} onClick={handle}>
+            Записать
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── EDIT MODAL ──
+function EditModal({ expense, categories, currentUser, onSave, onClose }) {
+  const [amount, setAmount] = useState(String(expense.amount));
+  const [currency, setCurrency] = useState(expense.currency);
+  const [category, setCategory] = useState(expense.category);
+  const [desc, setDesc] = useState(expense.desc);
+  const f = FAMILIES[expense.family];
+
+  function handle() {
+    if (!amount || !desc) return;
+    onSave({ ...expense, amount: parseFloat(amount), currency, category, desc,
+      editedBy: currentUser.id, editedAt: new Date().toISOString() });
+    onClose();
+  }
+
+  return (
+    <div style={S.modalOverlay} onClick={onClose}>
+      <div style={S.modal} onClick={e => e.stopPropagation()}>
+        <div style={S.modalTitle}>Изменить расход</div>
+        <div style={{ fontSize:12, color: f.color, marginBottom:14 }}>{f.name}</div>
+
+        <div style={S.segRow}>
+          {CURRENCIES.map(c => (
+            <button key={c.id} style={{ ...S.seg, ...(currency===c.id ? { background: f.color, color:"#fff", borderColor: f.color } : { color: f.color, borderColor: f.color+"66" }) }}
+              onClick={() => setCurrency(c.id)}>
+              {c.symbol}
+            </button>
+          ))}
+        </div>
+        <input style={S.input} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+        <div style={S.catGrid}>
+          {categories.map(cat => (
+            <button key={cat} style={{ ...S.catBtn, ...(category===cat ? { background: f.color+"33", borderColor: f.color, color: f.color } : {}) }}
+              onClick={() => setCategory(cat)}>
+              {cat}
+            </button>
+          ))}
+        </div>
+        <input style={S.input} type="text" value={desc} onChange={e => setDesc(e.target.value)} />
+        <div style={S.modalBtns}>
+          <button style={S.cancelBtn} onClick={onClose}>Отмена</button>
+          <button style={{ ...S.addBtn, background: f.color }} onClick={handle}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STATS TAB ──
+function StatsTab({ expenses }) {
+  const [viewMonth, setViewMonth] = useState(currentMonth());
+  const cur = currentMonth();
+  const prev = prevMonth();
+
+  const months = useMemo(() => {
+    const set = new Set(expenses.map(e => e.date.slice(0,7)));
+    return Array.from(set).sort().reverse();
+  }, [expenses]);
+
+  const filterExp = (month) => expenses.filter(e => e.date.slice(0,7) === month && !e.settled);
+
+  const thisExp = filterExp(viewMonth);
+  const compareMonth = viewMonth === cur ? prev : null;
+  const prevExp = compareMonth ? filterExp(compareMonth) : [];
+
+  // Group by currency
+  const byCurrency = {};
+  CURRENCIES.forEach(c => {
+    const total = thisExp.filter(e => e.currency === c.id).reduce((s,e) => s+e.amount, 0);
+    if (total > 0) byCurrency[c.id] = total;
+  });
+
+  // By category per currency
+  const byCat = {};
+  thisExp.forEach(e => {
+    const key = `${e.category}__${e.currency}`;
+    byCat[key] = (byCat[key]||0) + e.amount;
+  });
+
+  // By family
+  const byFamily = {};
+  Object.values(FAMILIES).forEach(f => {
+    byFamily[f.id] = {};
+    CURRENCIES.forEach(c => {
+      const total = thisExp.filter(e => e.family===f.id && e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+      if (total>0) byFamily[f.id][c.id] = total;
+    });
+  });
+
+  // Comparison
+  const prevByCurrency = {};
+  CURRENCIES.forEach(c => {
+    const total = prevExp.filter(e => e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+    if (total > 0) prevByCurrency[c.id] = total;
+  });
+
+  // Category totals for bar chart
+  const catTotals = {};
+  thisExp.forEach(e => {
+    catTotals[e.category] = catTotals[e.category] || {};
+    catTotals[e.category][e.currency] = (catTotals[e.category][e.currency]||0) + e.amount;
+  });
+
+  const monthLabel = (m) => {
+    const [y,mo] = m.split("-");
+    const d = new Date(parseInt(y), parseInt(mo)-1, 1);
+    return d.toLocaleDateString("ru-RU", { month:"long", year:"numeric" });
+  };
+
+  return (
+    <div style={{ paddingBottom: 100 }}>
+      {/* Month selector */}
+      <div style={S.monthRow}>
+        {[cur, prev, ...months.filter(m=>m!==cur&&m!==prev)].slice(0,4).map(m => (
+          <button key={m} style={{ ...S.monthBtn, ...(viewMonth===m ? { background:"#E8E0D5", color:"#13132B" } : {}) }}
+            onClick={() => setViewMonth(m)}>
+            {new Date(m+"-01").toLocaleDateString("ru-RU",{month:"short", year:"2-digit"})}
+          </button>
+        ))}
+      </div>
+
+      <div style={S.statsTitle}>{monthLabel(viewMonth)}</div>
+
+      {thisExp.length === 0 ? (
+        <div style={S.empty}>Нет расходов за этот месяц</div>
+      ) : (
+        <>
+          {/* Totals by currency */}
+          <div style={S.sectionTitle}>Итого по валютам</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
+            {CURRENCIES.filter(c => byCurrency[c.id]).map(c => {
+              const prevTotal = prevByCurrency[c.id] || 0;
+              const diff = prevTotal > 0 ? ((byCurrency[c.id]-prevTotal)/prevTotal*100) : null;
+              return (
+                <div key={c.id} style={S.currencyCard}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <span style={{ fontSize:12, color:"#9090A8", marginRight:8 }}>{c.name}</span>
+                      <span style={{ fontSize:20, fontWeight:700 }}>{formatMoney(byCurrency[c.id], c.id)}</span>
+                    </div>
+                    {diff !== null && (
+                      <div style={{ fontSize:12, color: diff>0?"#FF6B6B":"#4ECDC4", fontWeight:600 }}>
+                        {diff>0?"↑":"↓"} {Math.abs(diff).toFixed(0)}% vs пред. мес.
+                      </div>
+                    )}
+                  </div>
+                  {prevTotal > 0 && (
+                    <div style={{ fontSize:11, color:"#9090A8", marginTop:4 }}>
+                      Предыдущий месяц: {formatMoney(prevTotal, c.id)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* By family */}
+          <div style={S.sectionTitle}>По семьям</div>
+          <div style={{ display:"flex", gap:10, marginBottom:20 }}>
+            {Object.values(FAMILIES).map(f => (
+              <div key={f.id} style={{ ...S.statCard, borderTop:`3px solid ${f.color}`, flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:f.color, marginBottom:8 }}>{f.name}</div>
+                {Object.keys(byFamily[f.id]).length === 0
+                  ? <div style={{ fontSize:12, color:"#9090A8" }}>—</div>
+                  : CURRENCIES.filter(c => byFamily[f.id][c.id]).map(c => (
+                    <div key={c.id} style={{ marginBottom:4 }}>
+                      <div style={{ fontSize:14, fontWeight:700 }}>{formatMoney(byFamily[f.id][c.id], c.id)}</div>
+                      <div style={{ fontSize:11, color:"#9090A8" }}>{c.name}</div>
+                    </div>
+                  ))
+                }
+              </div>
+            ))}
+          </div>
+
+          {/* By category table */}
+          <div style={S.sectionTitle}>По категориям</div>
+          <div style={S.catTable}>
+            {Object.entries(catTotals).sort((a,b) => {
+              const totA = Object.values(a[1]).reduce((s,v)=>s+v,0);
+              const totB = Object.values(b[1]).reduce((s,v)=>s+v,0);
+              return totB - totA;
+            }).map(([cat, amounts]) => (
+              <div key={cat} style={S.catTableRow}>
+                <div style={S.catTableName}>{cat}</div>
+                <div style={S.catTableAmounts}>
+                  {CURRENCIES.filter(c => amounts[c.id]).map(c => (
+                    <span key={c.id} style={S.catTableAmount}>{formatMoney(amounts[c.id], c.id)}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ──
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [expenses, setExpenses] = useState(DEMO_EXPENSES);
+  const [settlements, setSettlements] = useState(DEMO_SETTLEMENTS);
+  const [tab, setTab] = useState("main");
+  const [showAdd, setShowAdd] = useState(false);
+  const [showSettle, setShowSettle] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [newCatInput, setNewCatInput] = useState("");
+  const [showNewCat, setShowNewCat] = useState(false);
+
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
+
+  const myFamily = FAMILIES[currentUser.family];
+  const unsettled = expenses.filter(e => !e.settled);
+  const settled   = expenses.filter(e => e.settled);
+
+  // Compute debts per currency
+  const debts = {};
+  CURRENCIES.forEach(c => {
+    const an = unsettled.filter(e => e.family==="artem_natasha" && e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+    const nr = unsettled.filter(e => e.family==="nastya_roma"   && e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+    const total = an + nr;
+    const fair  = total / 2;
+    debts[c.id] = fair - an; // >0 → AN owes NR; <0 → NR owes AN
+  });
+
+  const myDebts = Object.entries(debts)
+    .filter(([c,v]) => (myFamily.id==="artem_natasha" ? v>0 : v<0) && Math.abs(v)>0);
+
+  function handleAddExpense(data) {
+    setExpenses([...expenses, {
+      id: Date.now(),
+      family: currentUser.family,
+      addedBy: currentUser.id,
+      ...data,
+      date: new Date().toISOString().slice(0,10),
+      settled: false,
+    }]);
+  }
+
+  function handleSettle({ amount, currency, direction }) {
+    const payer    = direction==="an_to_nr" ? "artem_natasha" : "nastya_roma";
+    const receiver = direction==="an_to_nr" ? "nastya_roma"   : "artem_natasha";
+    setSettlements([...settlements, {
+      id: Date.now(),
+      fromId: payer, from: FAMILIES[payer].name,
+      toId: receiver, to: FAMILIES[receiver].name,
+      amount, currency,
+      date: new Date().toISOString(),
+    }]);
+    // Reduce receiver's oldest expenses in that currency
+    let toReduce = amount;
+    const newExp = expenses.map(e => ({...e}));
+    for (let i=0; i<newExp.length && toReduce>0; i++) {
+      if (!newExp[i].settled && newExp[i].family===receiver && newExp[i].currency===currency) {
+        if (newExp[i].amount <= toReduce) {
+          toReduce -= newExp[i].amount;
+          newExp[i].settled = true;
+          newExp[i].settledAt = new Date().toISOString().slice(0,10);
+        } else {
+          newExp[i].amount -= toReduce;
+          toReduce = 0;
+        }
+      }
+    }
+    setExpenses(newExp);
+  }
+
+  function handleSaveEdit(updated) {
+    setExpenses(expenses.map(e => e.id===updated.id ? updated : e));
+  }
+
+  function addCategory() {
+    const t = newCatInput.trim();
+    if (t && !categories.includes(t)) setCategories([...categories, t]);
+    setNewCatInput(""); setShowNewCat(false);
+  }
+
+  const allCats = [...categories, "+ Создать категорию"];
+
+  // Expense row
+  function ExpenseRow({ expense }) {
+    const f = FAMILIES[expense.family];
+    const addedByUser = USERS.find(u => u.id===expense.addedBy);
+    const editedByUser = expense.editedBy ? USERS.find(u => u.id===expense.editedBy) : null;
+    const isMe = expense.addedBy === currentUser.id;
+    return (
+      <div style={S.expenseRow}>
+        <div style={{ ...S.expenseDot, background: f.color }} />
+        <div style={S.expenseInfo}>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <div style={S.expenseDesc}>{expense.desc}</div>
+            {expense.editedBy && (
+              <div style={S.editedBadge} title={`Изм. ${editedByUser?.name||"?"} · ${formatDateTime(expense.editedAt)}`}>✎</div>
+            )}
+          </div>
+          <div style={S.expenseMeta}>
+            <span style={{ color: f.color }}>{f.name}</span>
+            <span style={S.dot}>·</span>
+            <span style={{ color:"#7070A0" }}>{expense.category}</span>
+            <span style={S.dot}>·</span>
+            <span>{formatDate(expense.date)}</span>
+            <span style={S.dot}>·</span>
+            <span style={{ color: isMe?"#E8E0D5":"#9090A8" }}>{isMe?"вы":addedByUser?.name||"—"}</span>
+          </div>
+          {expense.editedBy && (
+            <div style={{ fontSize:10, color:"#5D5D7A", marginTop:2 }}>
+              изм. {editedByUser?.name||"?"} · {formatDateTime(expense.editedAt)}
+            </div>
+          )}
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+          <div style={S.expenseAmount}>{formatMoney(expense.amount, expense.currency)}</div>
+          <button style={S.editBtn} onClick={() => setEditingExpense(expense)}>✎</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.root}>
+      {/* Header */}
+      <div style={S.header}>
+        <div>
+          <div style={S.logo}>🌿 {APP_NAME}</div>
+          <div style={S.headerSub}>общий кошелёк двух семей</div>
+        </div>
+        <button style={{ ...S.avatarBtn, borderColor: myFamily.color, color: myFamily.color }}
+          onClick={() => setCurrentUser(null)}>
+          {currentUser.name} ↩
+        </button>
+      </div>
+
+      {/* My debt banner */}
+      {myDebts.length > 0 && (
+        <div style={{ ...S.myDebtBanner, background: myFamily.bg, borderColor: myFamily.color }}>
+          <span style={{ fontSize:12, color:"#9090A8" }}>Вы должны:</span>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent:"flex-end" }}>
+            {myDebts.map(([c,v]) => (
+              <span key={c} style={{ fontWeight:700, color: myFamily.color }}>{formatMoney(Math.abs(v), c)}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={S.tabs}>
+        {[{id:"main",label:"Главная"},{id:"history",label:"История"},{id:"stats",label:"Статистика"}].map(t => (
+          <button key={t.id} style={{ ...S.tab, ...(tab===t.id ? S.tabActive : {}) }} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={S.content}>
+
+        {/* ── ГЛАВНАЯ ── */}
+        {tab==="main" && (
+          <div>
+
+            {/* ИТОГО СВОДКА */}
+            <div style={S.summaryBlock}>
+
+              {/* Итого потрачено */}
+              <div style={S.summarySection}>
+                <div style={S.debtLabel}>Траты с последнего расчёта</div>
+                {CURRENCIES.filter(c => unsettled.filter(e=>e.currency===c.id).reduce((s,e)=>s+e.amount,0)>0).map(c => {
+                  const total = unsettled.filter(e=>e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+                  return (
+                    <div key={c.id} style={S.summaryTotalRow}>
+                      <span style={{ color:"#9090A8", fontSize:12 }}>{c.name}</span>
+                      <span style={{ fontWeight:700, fontSize:18 }}>{formatMoney(total, c.id)}</span>
+                    </div>
+                  );
+                })}
+                {unsettled.length===0 && <div style={{ color:"#9090A8", fontSize:13 }}>нет активных расходов</div>}
+              </div>
+
+              <div style={S.summarySep} />
+
+              {/* Потратили по семьям */}
+              <div style={S.summarySection}>
+                <div style={S.debtLabel}>Потратили</div>
+                <div style={{ display:"flex", gap:10 }}>
+                  {Object.values(FAMILIES).map(f => {
+                    const isMe = f.id===currentUser.family;
+                    const totals = {};
+                    CURRENCIES.forEach(c => {
+                      const t = unsettled.filter(e=>e.family===f.id&&e.currency===c.id).reduce((s,e)=>s+e.amount,0);
+                      if (t>0) totals[c.id]=t;
+                    });
+                    return (
+                      <div key={f.id} style={{ flex:1, background:"#13132B", borderRadius:10, padding:"12px", borderTop:`2px solid ${f.color}`, ...(isMe?{boxShadow:`0 0 0 1px ${f.color}44`}:{}) }}>
+                        <div style={{ fontSize:11, color:f.color, fontWeight:700, marginBottom:8 }}>{f.name}{isMe?" · вы":""}</div>
+                        {Object.keys(totals).length===0
+                          ? <div style={{ fontSize:12, color:"#9090A8" }}>—</div>
+                          : CURRENCIES.filter(c=>totals[c.id]).map(c=>(
+                            <div key={c.id} style={{ marginBottom:4 }}>
+                              <div style={{ fontSize:15, fontWeight:700 }}>{formatMoney(totals[c.id],c.id)}</div>
+                              <div style={{ fontSize:10, color:"#9090A8" }}>{c.name}</div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={S.summarySep} />
+
+              {/* Долги */}
+              <div style={S.summarySection}>
+                <div style={S.debtLabel}>Кто кому должен</div>
+                {CURRENCIES.every(c=>Math.abs(debts[c.id]||0)<1)
+                  ? <div style={{ color:"#4ECDC4", fontSize:14, fontWeight:600 }}>🎉 Всё чисто!</div>
+                  : CURRENCIES.filter(c=>Math.abs(debts[c.id]||0)>=1).map(c => {
+                    const v = debts[c.id];
+                    const debtor   = v>0 ? FAMILIES.artem_natasha : FAMILIES.nastya_roma;
+                    const creditor = v>0 ? FAMILIES.nastya_roma   : FAMILIES.artem_natasha;
+                    const isMyDebt = debtor.id===currentUser.family;
+                    return (
+                      <div key={c.id} style={{ display:"flex", alignItems:"center", background:isMyDebt?debtor.bg:"#13132B", borderRadius:8, padding:"10px 12px", marginBottom:8 }}>
+                        <div style={{ flex:1 }}>
+                          <span style={{ color:debtor.color, fontWeight:700 }}>{debtor.name}</span>
+                          <span style={{ color:"#9090A8", margin:"0 6px" }}>→</span>
+                          <span style={{ color:creditor.color, fontWeight:700 }}>{creditor.name}</span>
+                        </div>
+                        <span style={{ fontWeight:700, fontSize:15, marginLeft:8 }}>{formatMoney(Math.abs(v),c.id)}</span>
+                      </div>
+                    );
+                  })
+                }
+                {CURRENCIES.some(c=>Math.abs(debts[c.id]||0)>=1) && (
+                  <button style={{ ...S.settleBtn, marginTop:8 }} onClick={()=>setShowSettle(true)}>
+                    Рассчитаться
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Список расходов */}
+            <div style={S.sectionTitle}>Все активные расходы</div>
+            {unsettled.length===0 && <div style={S.empty}>Нажми + чтобы добавить первый расход</div>}
+            {[...unsettled].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
+          </div>
+        )}
+
+
+        {/* ── ИСТОРИЯ ── */}
+        {tab==="history" && (
+          <div>
+            {settlements.length>0 && (
+              <>
+                <div style={S.sectionTitle}>Переводы</div>
+                {[...settlements].reverse().map(s => (
+                  <div key={s.id} style={S.settlementRow}>
+                    <div style={{ fontSize:20 }}>💸</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:500 }}>
+                        <span style={{ color: FAMILIES[s.fromId]?.color }}>{s.from}</span>
+                        {" → "}
+                        <span style={{ color: FAMILIES[s.toId]?.color }}>{s.to}</span>
+                      </div>
+                      <div style={{ fontSize:12, color:"#9090A8", marginTop:2 }}>{formatDateTime(s.date)}</div>
+                    </div>
+                    <div style={{ fontSize:15, fontWeight:700, color:"#4ECDC4" }}>{formatMoney(s.amount, s.currency)}</div>
+                  </div>
+                ))}
+              </>
+            )}
+            {settled.length>0 && (
+              <>
+                <div style={{ ...S.sectionTitle, marginTop:20 }}>Закрытые расходы</div>
+                {[...settled].reverse().map(e => <ExpenseRow key={e.id} expense={e} />)}
+              </>
+            )}
+            {settlements.length===0 && settled.length===0 && (
+              <div style={S.empty}>История пустая</div>
+            )}
+          </div>
+        )}
+
+        {/* ── СТАТИСТИКА ── */}
+        {tab==="stats" && <StatsTab expenses={expenses} />}
+
+      </div>
+
+      {/* ── FAB ── */}
+      <button style={{ ...S.fab, background: myFamily.color }} onClick={() => setShowAdd(true)}>
+        +
+      </button>
+
+      {/* Modals */}
+      {showAdd && (
+        <AddExpenseModal
+          currentUser={currentUser}
+          categories={[...categories, "+ Создать"]}
+          onAdd={(data) => {
+            if (data.category==="+Создать"||data.category==="+ Создать") {
+              setShowNewCat(true); setShowAdd(false); return;
+            }
+            handleAddExpense(data);
+          }}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+
+      {showSettle && (
+        <SettleModal debts={debts} onSettle={handleSettle} onClose={() => setShowSettle(false)} />
+      )}
+
+      {editingExpense && (
+        <EditModal
+          expense={editingExpense}
+          categories={categories}
+          currentUser={currentUser}
+          onSave={handleSaveEdit}
+          onClose={() => setEditingExpense(null)}
+        />
+      )}
+
+      {showNewCat && (
+        <div style={S.modalOverlay} onClick={() => setShowNewCat(false)}>
+          <div style={S.modal} onClick={e=>e.stopPropagation()}>
+            <div style={S.modalTitle}>Новая категория</div>
+            <input style={S.input} type="text" placeholder="Название категории"
+              value={newCatInput} onChange={e=>setNewCatInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addCategory()} autoFocus />
+            <div style={S.modalBtns}>
+              <button style={S.cancelBtn} onClick={() => setShowNewCat(false)}>Отмена</button>
+              <button style={{ ...S.addBtn, background: myFamily.color }} onClick={addCategory}>Создать</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── STYLES ──
+const S = {
+  root: { minHeight:"100vh", background:"#13132B", color:"#E8E0D5", fontFamily:"'Inter',-apple-system,sans-serif", maxWidth:480, margin:"0 auto", paddingBottom:100 },
+
+  loginRoot: { minHeight:"100vh", background:"#13132B", display:"flex", alignItems:"center", justifyContent:"center", padding:24 },
+  loginInner: { width:"100%", maxWidth:380, textAlign:"center" },
+  loginLogo: { fontSize:48, marginBottom:8 },
+  loginTitle: { fontSize:28, fontWeight:800, letterSpacing:-1, marginBottom:4, color:"#E8E0D5" },
+  loginSub: { fontSize:16, color:"#9090A8", marginBottom:32 },
+  loginGrid: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 },
+  userCard: { background:"#1E1E3A", border:"1.5px solid #2D2D4E", borderRadius:16, padding:"20px 16px", cursor:"pointer", transition:"all 0.15s", textAlign:"center", fontFamily:"inherit" },
+  userEmoji: { fontSize:28, marginBottom:6 },
+  userName: { fontSize:16, fontWeight:700, color:"#E8E0D5", marginBottom:4 },
+  userFamily: { fontSize:12, fontWeight:500 },
+  loginHint: { fontSize:12, color:"#4D4D6A" },
+
+  header: { padding:"20px 24px 16px", borderBottom:"1px solid #2D2D4E", display:"flex", justifyContent:"space-between", alignItems:"center" },
+  logo: { fontSize:20, fontWeight:700, letterSpacing:-0.5 },
+  headerSub: { fontSize:12, color:"#9090A8", marginTop:2 },
+  avatarBtn: { background:"none", border:"1.5px solid", borderRadius:20, padding:"6px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+
+  myDebtBanner: { margin:"12px 16px 0", borderRadius:10, border:"1px solid", padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:13 },
+
+  tabs: { display:"flex", padding:"0 16px", borderBottom:"1px solid #2D2D4E", overflowX:"auto" },
+  tab: { background:"none", border:"none", color:"#9090A8", padding:"14px 12px", fontSize:13, cursor:"pointer", borderBottom:"2px solid transparent", marginBottom:-1, fontFamily:"inherit", whiteSpace:"nowrap" },
+  tabActive: { color:"#E8E0D5", borderBottom:"2px solid #E8E0D5" },
+
+  content: { padding:"20px 24px" },
+
+  debtCard: { background:"#1E1E3A", borderRadius:16, padding:"20px", marginBottom:16 },
+  debtLabel: { fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:14 },
+  debtLine: { display:"flex", alignItems:"center", marginBottom:10, fontSize:14 },
+  settleBtn: { width:"100%", padding:"12px", background:"#2D2D4E", border:"none", borderRadius:10, color:"#E8E0D5", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  statsRow: { display:"flex", gap:12, marginBottom:16 },
+  statCard: { flex:1, background:"#1E1E3A", borderRadius:12, padding:"14px 12px" },
+  statName: { fontSize:11, fontWeight:600, marginBottom:8 },
+
+  sectionTitle: { fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:12 },
+  empty: { textAlign:"center", color:"#9090A8", padding:"32px 0", fontSize:14 },
+
+  expenseRow: { display:"flex", alignItems:"flex-start", gap:10, padding:"14px 0", borderBottom:"1px solid #2D2D4E" },
+  expenseDot: { width:8, height:8, borderRadius:"50%", flexShrink:0, marginTop:5 },
+  expenseInfo: { flex:1, minWidth:0 },
+  expenseDesc: { fontSize:14, fontWeight:500, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  expenseMeta: { fontSize:11, color:"#9090A8", display:"flex", gap:3, alignItems:"center", flexWrap:"wrap" },
+  dot: { color:"#4D4D6A" },
+  expenseAmount: { fontSize:14, fontWeight:700, textAlign:"right" },
+  editBtn: { fontSize:11, background:"#2D2D4E", border:"none", borderRadius:6, color:"#9090A8", padding:"3px 7px", cursor:"pointer", fontFamily:"inherit" },
+  editedBadge: { fontSize:10, background:"#2D2D4E", borderRadius:4, padding:"1px 5px", color:"#9090A8", cursor:"help" },
+
+  settlementRow: { display:"flex", alignItems:"center", gap:12, padding:"14px 0", borderBottom:"1px solid #2D2D4E" },
+
+  fab: { position:"fixed", bottom:28, right:"calc(50% - 220px)", width:56, height:56, borderRadius:"50%", border:"none", color:"#fff", fontSize:28, fontWeight:300, cursor:"pointer", boxShadow:"0 4px 20px #0008", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center" },
+
+  modalOverlay: { position:"fixed", inset:0, background:"#000000BB", display:"flex", alignItems:"flex-end", zIndex:100 },
+  modal: { background:"#1E1E3A", borderRadius:"20px 20px 0 0", padding:"24px 24px 40px", width:"100%", maxWidth:480, margin:"0 auto", maxHeight:"90vh", overflowY:"auto" },
+  modalHeader: { display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:16 },
+  modalTitle: { fontSize:18, fontWeight:700, marginBottom:6 },
+  modalSub: { fontSize:13, color:"#9090A8", marginBottom:16 },
+  modalBtns: { display:"flex", gap:10, marginTop:4 },
+
+  segRow: { display:"flex", gap:8, marginBottom:12 },
+  seg: { flex:1, padding:"9px 8px", borderRadius:8, border:"1.5px solid #2D2D4E", background:"none", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+
+  catGrid: { display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 },
+  catBtn: { padding:"6px 12px", borderRadius:20, border:"1.5px solid #2D2D4E", background:"none", color:"#9090A8", fontSize:12, cursor:"pointer", fontFamily:"inherit" },
+
+  input: { width:"100%", background:"#13132B", border:"1px solid #2D2D4E", borderRadius:10, padding:"12px 14px", color:"#E8E0D5", fontSize:14, marginBottom:10, fontFamily:"inherit", boxSizing:"border-box", outline:"none" },
+  addBtn: { flex:1, padding:"13px", border:"none", borderRadius:10, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
+  cancelBtn: { flex:1, padding:"13px", background:"#2D2D4E", border:"none", borderRadius:10, color:"#E8E0D5", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+
+  debtSummaryBox: { background:"#13132B", borderRadius:10, padding:"12px 14px", marginBottom:14, fontSize:13, textAlign:"center" },
+  dirToggle: { display:"flex", flexDirection:"column", gap:8, marginBottom:14 },
+  dirBtn: { padding:"10px 14px", borderRadius:10, border:"1.5px solid #2D2D4E", background:"none", color:"#9090A8", fontSize:12, fontWeight:500, cursor:"pointer", fontFamily:"inherit", textAlign:"left" },
+  suggestRow: { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 },
+  suggestLabel: { fontSize:13, color:"#9090A8" },
+  suggestBtn: { background:"#2D2D4E", border:"none", borderRadius:8, color:"#4ECDC4", padding:"6px 12px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+
+  // Stats
+  monthRow: { display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" },
+  monthBtn: { padding:"6px 12px", borderRadius:20, border:"1px solid #2D2D4E", background:"none", color:"#9090A8", fontSize:12, cursor:"pointer", fontFamily:"inherit" },
+  statsTitle: { fontSize:16, fontWeight:700, marginBottom:16, textTransform:"capitalize" },
+  currencyCard: { background:"#1E1E3A", borderRadius:12, padding:"14px 16px" },
+  catTable: { background:"#1E1E3A", borderRadius:12, overflow:"hidden" },
+  summaryBlock: { background:"#1E1E3A", borderRadius:16, marginBottom:20, overflow:"hidden" },
+  summarySection: { padding:"16px 18px" },
+  summarySep: { height:1, background:"#2D2D4E" },
+  summaryTotalRow: { display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 },
+  catTableRow: { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid #13132B" },
+  catTableName: { fontSize:13, color:"#E8E0D5" },
+  catTableAmounts: { display:"flex", flexDirection:"column", alignItems:"flex-end", gap:2 },
+  catTableAmount: { fontSize:13, fontWeight:600 },
+};
