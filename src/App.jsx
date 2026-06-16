@@ -813,7 +813,13 @@ export default function App() {
             {settlements.length===0 && <div style={S.empty}>История пустая</div>}
             {[...settlements].sort((a,b) => (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)).map(s => {
               const isOpen = selectedSettlement === s.id;
-              const settledExp = expenses.filter(e => e.settlementId === s.id);
+              const settledExp = expenses.filter(e => e.settlementId === s.id || (e.deleted && e.settlementId === s.id));
+              // Also include deleted expenses that happened before this settlement date
+              const settlementDate = s.date;
+              const allPeriodExp = expenses.filter(e => 
+                e.settlementId === s.id || 
+                (e.deleted && !e.settlementId && e.createdAt?.seconds && s.createdAt?.seconds && e.createdAt.seconds <= s.createdAt.seconds)
+              );
               return (
                 <div key={s.id}>
                   <div style={{ ...S.settlementRow, cursor:"pointer", borderRadius:10, padding:"14px 12px", background: isOpen?"#1E1E3A":"transparent" }}
@@ -863,18 +869,21 @@ export default function App() {
                       )}
                       {/* Expenses list */}
                       <div style={{ fontSize:11, color:"#9090A8", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Расходы в этом периоде</div>
-                      {settledExp.length===0 && <div style={{ fontSize:13, color:"#9090A8" }}>нет данных</div>}
-                      {settledExp.map(e => {
+                      {allPeriodExp.length===0 && <div style={{ fontSize:13, color:"#9090A8" }}>нет данных</div>}
+                      {allPeriodExp.map(e => {
                         const f = FAMILIES[e.family];
                         const u = USERS.find(u=>u.id===e.addedBy);
+                        const deletedBy = e.deletedBy ? USERS.find(u=>u.id===e.deletedBy) : null;
+                        const isDeleted = !!e.deleted;
                         return (
-                          <div key={e.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:"1px solid #2D2D4E" }}>
-                            <div style={{ width:6, height:6, borderRadius:"50%", background:f.color, flexShrink:0 }} />
+                          <div key={e.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderBottom:"1px solid #2D2D4E", opacity: isDeleted ? 0.6 : 1 }}>
+                            <div style={{ width:6, height:6, borderRadius:"50%", background: isDeleted ? "#FF4444" : f.color, flexShrink:0 }} />
                             <div style={{ flex:1 }}>
-                              <div style={{ fontSize:13 }}>{e.desc}</div>
+                              <div style={{ fontSize:13, textDecoration: isDeleted ? "line-through" : "none", color: isDeleted ? "#FF6666" : "#E8E0D5" }}>{e.desc}</div>
                               <div style={{ fontSize:11, color:"#9090A8" }}>{f.name} · {u?.name||"—"} · {formatDate(e.date)}</div>
+                              {isDeleted && <div style={{ fontSize:10, color:"#FF4444" }}>удалил {deletedBy?.name||"?"} · {formatDateTime(e.deletedAt)}</div>}
                             </div>
-                            <div style={{ fontSize:13, fontWeight:600 }}>{formatMoney(e.amount, e.currency)}</div>
+                            <div style={{ fontSize:13, fontWeight:600, textDecoration: isDeleted ? "line-through" : "none", color: isDeleted ? "#FF6666" : "#E8E0D5" }}>{formatMoney(e.amount, e.currency)}</div>
                           </div>
                         );
                       })}
